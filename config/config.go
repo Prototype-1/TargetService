@@ -4,7 +4,6 @@ import (
     "log"
     "os"
     "strconv"
-
     "github.com/joho/godotenv"
 )
 
@@ -14,7 +13,6 @@ type Config struct {
     DBUser     string
     DBPassword string
     DBName     string
-
     SourceURL   string
     SyncInterval int
 }

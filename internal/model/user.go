@@ -7,4 +7,6 @@ type UserProfile struct {
     Mobile        string `json:"mobile,omitempty"`
     Status        string `json:"status,omitempty"`
     LastUpdatedAt string `json:"last_updated_at,omitempty"`
+	 SyncStatus    string `json:"-"` 
+    SyncMessage   string `json:"-"`
 }
