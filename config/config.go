@@ -4,28 +4,46 @@ import (
     "log"
     "os"
     "strconv"
+
     "github.com/joho/godotenv"
 )
 
 type Config struct {
+    DBHost     string
+    DBPort     string
+    DBUser     string
+    DBPassword string
+    DBName     string
+
     SourceURL   string
-    DBUrl       string
     SyncInterval int
 }
 
-func Load() Config {
-    if err := godotenv.Load(); err != nil {
+func LoadConfig() Config {
+    err := godotenv.Load()
+    if err != nil {
         log.Println("No .env file is available for loading, please make sure the module is there")
     }
 
-    interval, err := strconv.Atoi(os.Getenv("SYNC_INTERVAL"))
+    syncInterval, err := strconv.Atoi(getEnv("SYNC_INTERVAL", "15"))
     if err != nil {
-        interval = 15 
+        syncInterval = 15
     }
 
     return Config{
-        SourceURL:    os.Getenv("SOURCE_URL"),
-        DBUrl:        os.Getenv("DB_URL"),
-        SyncInterval: interval,
+        DBHost:       getEnv("DB_HOST", "localhost"),
+        DBPort:       getEnv("DB_PORT", "5432"),
+        DBUser:       getEnv("DB_USER", "postgres"),
+        DBPassword:   getEnv("DB_PASSWORD", ""),
+        DBName:       getEnv("DB_NAME", "target_service"),
+        SourceURL:    getEnv("SOURCE_SERVICE_URL", "http://localhost:8080/users/changes"),
+        SyncInterval: syncInterval,
     }
+}
+
+func getEnv(key, fallback string) string {
+    if value, exists := os.LookupEnv(key); exists {
+        return value
+    }
+    return fallback
 }
