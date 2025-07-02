@@ -33,6 +33,33 @@ func (r *UserRepository) Close() {
     r.DB.Close()
 }
 
+func (r *UserRepository) AutoMigrate() error {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    query := `
+    CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        mobile VARCHAR(20) UNIQUE NOT NULL,
+        status VARCHAR(50) NOT NULL,
+        last_updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+        sync_status VARCHAR(50) NOT NULL DEFAULT 'synced',
+        sync_message TEXT
+    );
+    `
+
+    _, err := r.DB.Exec(ctx, query)
+    if err != nil {
+        r.Logger.Error("AutoMigrate failed", zap.Error(err))
+        return err
+    }
+
+    r.Logger.Info("Database migration completed")
+    return nil
+}
+
 // GetUserByID returns the existing user by ID, or nil if not found
 func (r *UserRepository) GetUserByID(ctx context.Context, id string) (*model.UserProfile, error) {
     var user model.UserProfile
