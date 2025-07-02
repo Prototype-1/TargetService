@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: target_service
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: BrainFog@1996
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  source-service:
+    build:
+      context: ../SourceService
+    ports:
+      - "8080:8080"
+
+  target-service:
+    build:
+      context: .
+    ports:
+      - "2112:2112"
+    depends_on:
+      - postgres
+      - source-service
+    restart: always
+volumes:
+  pg_data:

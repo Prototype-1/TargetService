@@ -7,7 +7,6 @@ import (
     "regexp"
     "sync"
     "time"
-
     "github.com/Prototype-1/TargetService/config"
     "github.com/Prototype-1/TargetService/internal/model"
     "github.com/Prototype-1/TargetService/internal/repository"
@@ -22,7 +21,6 @@ type SyncService struct {
     Config  config.Config
     Client  *http.Client
     EmailRe *regexp.Regexp
-
     ProfilesFetched prometheus.Counter
     ProfilesSynced  prometheus.Counter
     ProfilesSkipped prometheus.Counter
