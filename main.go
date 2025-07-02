@@ -27,6 +27,10 @@ func main() {
     }
     defer repo.Close()
 
+    if err := repo.AutoMigrate(); err != nil {
+    logger.Fatal("Migration failed", zap.Error(err))
+}
+
     syncSvc := service.NewSyncService(repo, logger, cfg)
 
     ctx, cancel := context.WithCancel(context.Background())
