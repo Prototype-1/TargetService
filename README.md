@@ -25,6 +25,15 @@ It simulates data synchronization between a SourceService and a TargetService, w
 ### Prerequisites
 - Docker + Docker Compose installed.
 
+  This project uses Docker to run both services and PostgreSQL.
+  Make sure you have Docker installed on your system.
+  On Windows & Mac, install Docker Desktop.
+  On Linux, install docker and docker-compose packages using your distro’s package manager.
+  (Optional) Git
+  If you want to clone these repositories.
+
+  Note: This project is tested on Docker Desktop on Windows, but it will also work on Linux or MacOS with Docker installed.
+
 ## Running the application
 
 ### 1. Clone the repository
