@@ -7,9 +7,12 @@ import (
     "regexp"
     "sync"
     "time"
+
     "github.com/Prototype-1/TargetService/config"
     "github.com/Prototype-1/TargetService/internal/model"
     "github.com/Prototype-1/TargetService/internal/repository"
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
     "go.uber.org/zap"
 )
 
@@ -19,19 +22,55 @@ type SyncService struct {
     Config  config.Config
     Client  *http.Client
     EmailRe *regexp.Regexp
+
+    ProfilesFetched prometheus.Counter
+    ProfilesSynced  prometheus.Counter
+    ProfilesSkipped prometheus.Counter
+    SyncDuration    prometheus.Histogram
 }
 
 func NewSyncService(repo *repository.UserRepository, logger *zap.Logger, cfg config.Config) *SyncService {
-    return &SyncService{
+    s := &SyncService{
         Repo:    repo,
         Logger:  logger,
         Config:  cfg,
         Client:  &http.Client{Timeout: 5 * time.Second},
         EmailRe: regexp.MustCompile(`^[a-zA-Z0-9._%%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`),
+
+        ProfilesFetched: prometheus.NewCounter(prometheus.CounterOpts{
+            Name: "profiles_fetched_total",
+            Help: "Total number of profiles fetched from SourceService",
+        }),
+        ProfilesSynced: prometheus.NewCounter(prometheus.CounterOpts{
+            Name: "profiles_synced_total",
+            Help: "Total number of profiles successfully synced",
+        }),
+        ProfilesSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+            Name: "profiles_skipped_total",
+            Help: "Total number of profiles skipped or failed validation",
+        }),
+        SyncDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+            Name:    "sync_batch_duration_seconds",
+            Help:    "Duration of sync batch in seconds",
+            Buckets: prometheus.DefBuckets,
+        }),
     }
+
+    //Here it register all metrics with Prometheus
+    prometheus.MustRegister(s.ProfilesFetched, s.ProfilesSynced, s.ProfilesSkipped, s.SyncDuration)
+    return s
 }
 
 func (s *SyncService) Start(ctx context.Context) {
+    // Start the Prometheus metrics server
+    go func() {
+        s.Logger.Info("Metrics endpoint running on :2112/metrics")
+        http.Handle("/metrics", promhttp.Handler())
+        if err := http.ListenAndServe(":2112", nil); err != nil && err != http.ErrServerClosed {
+            s.Logger.Fatal("Metrics HTTP server failed", zap.Error(err))
+        }
+    }()
+
     ticker := time.NewTicker(time.Duration(s.Config.SyncInterval) * time.Second)
     defer ticker.Stop()
 
@@ -50,6 +89,8 @@ func (s *SyncService) Start(ctx context.Context) {
 }
 
 func (s *SyncService) syncBatch(ctx context.Context) {
+    start := time.Now()
+
     req, err := http.NewRequestWithContext(ctx, "GET", s.Config.SourceURL, nil)
     if err != nil {
         s.Logger.Error("creating request failed", zap.Error(err))
@@ -69,65 +110,63 @@ func (s *SyncService) syncBatch(ctx context.Context) {
         return
     }
 
-	//zap for structured logging
+    s.ProfilesFetched.Add(float64(len(users)))
     s.Logger.Info("Fetched user profiles", zap.Int("count", len(users)))
 
-    // Worker pool whuch limits max concurrent DB writes
-	//WaitGroup to wait for all processing
     var wg sync.WaitGroup
     concurrency := 5
     sem := make(chan struct{}, concurrency)
 
     for _, user := range users {
         wg.Add(1)
-	//structs are more flexible that this part block if concurrency is full
-        sem <- struct{}{} 
+        sem <- struct{}{}
         go func(u model.UserProfile) {
             defer wg.Done()
             defer func() { <-sem }()
-
             s.processUser(ctx, u)
         }(user)
     }
 
     wg.Wait()
+    duration := time.Since(start).Seconds()
+    s.SyncDuration.Observe(duration)
 }
 
 func (s *SyncService) processUser(ctx context.Context, user model.UserProfile) {
-    // This specific part validates the email
     if !s.EmailRe.MatchString(user.Email) {
         user.SyncStatus = "failed_validation"
         user.SyncMessage = "Invalid email format"
         s.Logger.Warn("Validation failed", zap.String("id", user.ID), zap.String("reason", user.SyncMessage))
         s.Repo.InsertOrUpdateUser(ctx, user)
+        s.ProfilesSkipped.Inc()
         return
     }
 
-    //  This specific part validates the status
     if user.Status != "active" && user.Status != "pending" {
         user.SyncStatus = "skipped"
         user.SyncMessage = "Status is neither active nor pending"
         s.Logger.Warn("Skipped user", zap.String("id", user.ID), zap.String("reason", user.SyncMessage))
         s.Repo.InsertOrUpdateUser(ctx, user)
+        s.ProfilesSkipped.Inc()
         return
     }
 
-    //  Here we check for  existing user/s
     existing, _ := s.Repo.GetUserByID(ctx, user.ID)
     if existing != nil && existing.LastUpdatedAt >= user.LastUpdatedAt {
         user.SyncStatus = "skipped"
         user.SyncMessage = "Not newer than existing record"
         s.Logger.Info("Skipped older record", zap.String("id", user.ID))
         s.Repo.InsertOrUpdateUser(ctx, user)
+        s.ProfilesSkipped.Inc()
         return
     }
 
-    // Once we pass all the checks, we will mark ot as synced
     user.SyncStatus = "synced"
     user.SyncMessage = "Successfully synced"
     if err := s.Repo.InsertOrUpdateUser(ctx, user); err != nil {
         s.Logger.Error("DB insert/update failed", zap.Error(err), zap.String("id", user.ID))
     } else {
         s.Logger.Info("User synced", zap.String("id", user.ID))
+        s.ProfilesSynced.Inc()
     }
 }
