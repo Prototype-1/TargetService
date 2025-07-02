@@ -7,7 +7,6 @@ import (
     "os/signal"
     "syscall"
     "time"
-
     "github.com/Prototype-1/TargetService/config"
     "github.com/Prototype-1/TargetService/internal/repository"
     "github.com/Prototype-1/TargetService/internal/service"
@@ -33,7 +32,7 @@ func main() {
     ctx, cancel := context.WithCancel(context.Background())
     go syncSvc.Start(ctx)
 
-    // graceful shutdown
+    // graceful shutdown using os package
     c := make(chan os.Signal, 1)
     signal.Notify(c, os.Interrupt, syscall.SIGTERM)
     <-c
